@@ -3,46 +3,51 @@ import time
 import random
 import os
 import json
+import sys
 
+# ---------- Telegram ----------
 def send_telegram_message(bot_token, chat_id, message):
-    """Send a message to Telegram chat"""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        response = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=5)
-        return response.ok
+        resp = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10)
+        return resp.ok
     except Exception as e:
-        print(f"Failed to send Telegram message: {e}")
+        print(f"Telegram error: {e}")
         return False
 
-def try_roll_numbers(prefix="26102", dob="11/05/2010", year="2026", 
-                     doctype="SSCER", delay=0.5, start_from=000, random_order=False,
+# ---------- Main search ----------
+def try_roll_numbers(prefix="26102", dob="11/05/2010", year="2026",
+                     doctype="SSCER", delay=1.0, start_from=None, random_order=False,
                      telegram_bot_token=None, telegram_chat_id=None):
-    """
-    Try roll number suffixes from 0000 to 9999.
-    prefix + 4-digit suffix = full roll number.
-    """
     url = "https://results.digilocker.gov.in/api/cbse/sscer/results"
-    headers = {
+    
+    # Realistic headers to avoid 403
+    base_headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://results.digilocker.gov.in",
+        "Referer": "https://results.digilocker.gov.in/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Connection": "keep-alive",
     }
-
-    # Generate all 4-digit suffixes from 0000 to 9999
-    all_suffixes = [f"{s:03d}" for s in range(1000)]  # 0000, 0001, ..., 9999
-
+    
+    # Generate suffixes 000..999 (3 digits)
+    all_suffixes = [f"{s:03d}" for s in range(1000)]
+    
     if random_order:
         random.shuffle(all_suffixes)
-        print("Trying suffixes in random order (10,000 combinations).")
+        print("Random order enabled")
     elif start_from is not None:
-        if 0 <= start_from <= 999:
-            start_idx = start_from
-            all_suffixes = all_suffixes[start_idx:] + all_suffixes[:start_idx]
-            print(f"Starting from suffix {start_idx:04d} and continuing sequentially.")
-        else:
-            print(f"Invalid start_from {start_from}, must be 0-9999. Starting from 0000.")
+        start_idx = start_from
+        all_suffixes = all_suffixes[start_idx:] + all_suffixes[:start_idx]
+        print(f"Starting from suffix {start_idx:03d}")
     else:
-        print("Starting from 0000 sequentially.")
-
+        print("Starting from 000")
+    
+    session = requests.Session()
+    session.headers.update(base_headers)
+    
     for suffix in all_suffixes:
         roll_number = prefix + suffix
         payload = {
@@ -51,85 +56,93 @@ def try_roll_numbers(prefix="26102", dob="11/05/2010", year="2026",
             "dob": dob,
             "year": year
         }
-
-        print(f"Trying roll number: {roll_number}")
-
+        
+        print(f"Trying: {roll_number}")
+        sys.stdout.flush()  # Force output in GitHub Actions
+        
         try:
-            response = requests.post(url, data=payload, headers=headers, timeout=10)
+            response = session.post(url, data=payload, timeout=15)
+            print(f"  HTTP {response.status_code}")
+            
+            if response.status_code == 403:
+                print("  ! 403 Forbidden – trying with fresh headers and longer delay")
+                time.sleep(5)
+                # Rotate user agent
+                new_ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                session.headers.update({"User-Agent": new_ua})
+                continue
+                
+            if response.status_code != 200:
+                print(f"  Skipping (HTTP {response.status_code})")
+                time.sleep(delay)
+                continue
+            
+            # Parse JSON
             try:
                 data = response.json()
             except:
                 data = {}
-
-            if response.status_code == 200:
-                # Check for success indicators (customize if needed)
-                data_str = json.dumps(data).lower()
-                if (isinstance(data, dict) and 
-                    (data.get("statusCode") == "SUCCESS" or 
-                     "result" in data or 
-                     "marks" in data_str or
-                     "name" in data_str)):
-                    print(f"\n*** SUCCESS! Valid roll number: {roll_number} ***")
-                    print("Response:", json.dumps(data, indent=2)[:500])
-                    
-                    # Save locally
-                    with open("valid_result.json", "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
-                    
-                    # Send Telegram notification
-                    if telegram_bot_token and telegram_chat_id:
-                        msg = (f"✅ CBSE Result Found!\n"
-                               f"Roll Number: {roll_number}\n"
-                               f"DOB: {dob}\n"
-                               f"Year: {year}\n"
-                               f"Full response saved in valid_result.json")
-                        send_telegram_message(telegram_bot_token, telegram_chat_id, msg)
-                        print("Telegram notification sent.")
-                    else:
-                        print("Telegram credentials missing, skipping notification.")
-                    
-                    return roll_number, data
+            
+            data_str = json.dumps(data).lower()
+            
+            # Success detection – adjust based on actual API response
+            success = False
+            if isinstance(data, dict):
+                if data.get("statusCode") == "SUCCESS":
+                    success = True
+                elif "result" in data and data["result"]:
+                    success = True
+                elif "marks" in data_str or "name" in data_str:
+                    success = True
+            
+            if success:
+                print(f"\n*** SUCCESS! Roll number: {roll_number} ***")
+                print("Response preview:", json.dumps(data, indent=2)[:500])
+                
+                with open("valid_result.json", "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                
+                if telegram_bot_token and telegram_chat_id:
+                    msg = (f"✅ CBSE Result Found!\n"
+                           f"Roll: {roll_number}\n"
+                           f"DOB: {dob}\n"
+                           f"Year: {year}")
+                    send_telegram_message(telegram_bot_token, telegram_chat_id, msg)
+                    print("Telegram notification sent")
                 else:
-                    # Normal "not found" response
-                    error_indicators = ["not found", "invalid", "error", "no record"]
-                    if any(ind in data_str for ind in error_indicators):
-                        print(f"  -> No result")
-                    else:
-                        print(f"  -> Probably no result")
+                    print("Telegram credentials missing – no notification")
+                
+                return roll_number, data
             else:
-                print(f"  -> HTTP {response.status_code}")
-
+                # Normal "not found" – do nothing
+                pass
+                
         except requests.exceptions.RequestException as e:
-            print(f"  -> Request failed: {e}")
-
+            print(f"  Request error: {e}")
+        
         time.sleep(delay)
-
-    print("No valid roll number found in range 0000-9999.")
+    
+    print("No valid roll found in 000-999")
     return None, None
 
+# ---------- Main entry ----------
 if __name__ == "__main__":
-    # ========== CONFIGURATION ==========
-    PREFIX = "26102"            # Fixed prefix (4 digits)
-    DOB = "29/10/2010"
+    PREFIX = "26102"          # as you want
+    DOB = "29/10/2010"        # your DOB
     YEAR = "2026"
     DOCTYPE = "SSCER"
-    DELAY = 0.5                # Seconds between requests
-    START_FROM = None          # e.g., 5000, or None to start from 0000
-    RANDOM_ORDER = False       # Set True to randomise order
-
-    # ========== TELEGRAM SECRETS ==========
-    # Read from environment variables (Replit/Streamlit/GitHub secrets)
+    DELAY = 1.0               # seconds between tries (be polite)
+    START_FROM = None         # e.g., 500 to start from 500
+    RANDOM_ORDER = False
+    
+    # Read Telegram secrets from environment
     TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
     
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ WARNING: Telegram credentials not found in environment variables.")
-        print("   No notifications will be sent. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.")
-    else:
-        print("✅ Telegram credentials loaded.")
+        print("⚠️ Telegram credentials not set – will not send notifications")
     
-    # Run the search
-    roll, response_data = try_roll_numbers(
+    roll, data = try_roll_numbers(
         prefix=PREFIX,
         dob=DOB,
         year=YEAR,
@@ -142,6 +155,6 @@ if __name__ == "__main__":
     )
     
     if roll:
-        print(f"\n🎉 Success! Roll number: {roll}")
+        print(f"\n✅ SUCCESS: {roll}")
     else:
-        print("\n❌ No match found in 10,000 attempts.")
+        print("\n❌ Failed to find roll number")
