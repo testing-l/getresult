@@ -1,0 +1,41 @@
+name: Check CBSE Results
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours – change as needed
+  workflow_dispatch:        # allows manual run from GitHub UI
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Download previous state
+        uses: actions/download-artifact@v4
+        with:
+          name: state
+          path: .
+        continue-on-error: true   # first run has no artifact
+
+      - name: Run checker script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python check_results.py
+
+      - name: Upload new state
+        uses: actions/upload-artifact@v4
+        with:
+          name: state
+          path: state.json
+          retention-days: 1
