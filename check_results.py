@@ -14,8 +14,8 @@ def send_telegram_message(bot_token, chat_id, message):
         print(f"Failed to send Telegram message: {e}")
         return False
 
-def try_roll_numbers(prefix="2610", dob="11/05/2010", year="2026", 
-                     doctype="SSCER", delay=0.5, start_from=2000, random_order=False,
+def try_roll_numbers(prefix="26102", dob="11/05/2010", year="2026", 
+                     doctype="SSCER", delay=0.5, start_from=000, random_order=False,
                      telegram_bot_token=None, telegram_chat_id=None):
     """
     Try roll number suffixes from 0000 to 9999.
@@ -28,13 +28,13 @@ def try_roll_numbers(prefix="2610", dob="11/05/2010", year="2026",
     }
 
     # Generate all 4-digit suffixes from 0000 to 9999
-    all_suffixes = [f"{s:04d}" for s in range(10000)]  # 0000, 0001, ..., 9999
+    all_suffixes = [f"{s:04d}" for s in range(1000)]  # 0000, 0001, ..., 9999
 
     if random_order:
         random.shuffle(all_suffixes)
         print("Trying suffixes in random order (10,000 combinations).")
     elif start_from is not None:
-        if 0 <= start_from <= 9999:
+        if 0 <= start_from <= 999:
             start_idx = start_from
             all_suffixes = all_suffixes[start_idx:] + all_suffixes[:start_idx]
             print(f"Starting from suffix {start_idx:04d} and continuing sequentially.")
@@ -109,7 +109,7 @@ def try_roll_numbers(prefix="2610", dob="11/05/2010", year="2026",
 
 if __name__ == "__main__":
     # ========== CONFIGURATION ==========
-    PREFIX = "2610"            # Fixed prefix (4 digits)
+    PREFIX = "26102"            # Fixed prefix (4 digits)
     DOB = "29/10/2010"
     YEAR = "2026"
     DOCTYPE = "SSCER"
