@@ -28,7 +28,7 @@ def try_roll_numbers(prefix="26102", dob="11/05/2010", year="2026",
     }
 
     # Generate all 4-digit suffixes from 0000 to 9999
-    all_suffixes = [f"{s:04d}" for s in range(1000)]  # 0000, 0001, ..., 9999
+    all_suffixes = [f"{s:03d}" for s in range(1000)]  # 0000, 0001, ..., 9999
 
     if random_order:
         random.shuffle(all_suffixes)
