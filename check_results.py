@@ -15,7 +15,7 @@ def send_telegram_message(bot_token, chat_id, message):
         return False
 
 def try_roll_numbers(prefix="2610", dob="11/05/2010", year="2026", 
-                     doctype="SSCER", delay=0.5, start_from=None, random_order=False,
+                     doctype="SSCER", delay=0.5, start_from=2000, random_order=False,
                      telegram_bot_token=None, telegram_chat_id=None):
     """
     Try roll number suffixes from 0000 to 9999.
@@ -110,7 +110,7 @@ def try_roll_numbers(prefix="2610", dob="11/05/2010", year="2026",
 if __name__ == "__main__":
     # ========== CONFIGURATION ==========
     PREFIX = "2610"            # Fixed prefix (4 digits)
-    DOB = "11/05/2010"
+    DOB = "29/10/2010"
     YEAR = "2026"
     DOCTYPE = "SSCER"
     DELAY = 0.5                # Seconds between requests
